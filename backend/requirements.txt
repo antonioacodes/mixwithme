@@ -26,3 +26,5 @@ starlette==1.10.0
 typing-extensions==4.16.0
 typing-inspection==0.4.5
 uvicorn==0.54.0
+
+imageio-ffmpeg==0.6.0

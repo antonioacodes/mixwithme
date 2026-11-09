@@ -90,7 +90,7 @@ não confunda auditoria sem alertas com garantia de ausência de vulnerabilidade
 
 ## Próximas entregas
 
-LUFS/true peak com validação, investigação que interprete respostas com evidência,
+Investigação que interprete respostas com evidência,
 revisão de contexto por versão na interface, A/B alinhado/loudness matched e testes
 de carga na VPS. Nenhuma dessas funções é simulada como se estivesse pronta.
 

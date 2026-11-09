@@ -2,6 +2,7 @@
 import fcntl
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -37,9 +38,16 @@ def serve():
                 continue
             error = None
             try:
-                completed = subprocess.run([sys.executable, '-m', 'app.worker', '--one', row['id']],
-                    timeout=180, capture_output=True, env={**os.environ, 'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1'})
-                if completed.returncode:
+                process = subprocess.Popen([sys.executable, '-m', 'app.worker', '--one', row['id']],
+                    start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    env={**os.environ, 'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1'})
+                try:
+                    process.wait(timeout=180)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+                    raise
+                if process.returncode:
                     error = 'Não foi possível analisar este WAV. Verifique os dados e reenvie.'
             except subprocess.TimeoutExpired:
                 error = 'Análise excedeu o limite de 180 segundos.'

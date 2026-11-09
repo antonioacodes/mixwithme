@@ -16,7 +16,8 @@ def test_sine_calibration_and_spectral_band(tmp_path, wav, session):
     assert m['lr_correlation'] == pytest.approx(1)
     assert m['mono_downmix_change_db'] == pytest.approx(0)
     assert m['band_energy_pct']['mid'] > 99.9
-    assert m['integrated_lufs'] is None and m['true_peak_dbtp'] is None
+    assert m['integrated_lufs'] == pytest.approx(-6.05, abs=.15)
+    assert m['true_peak_dbtp'] == pytest.approx(-6.02, abs=.05)
     json.dumps(r, allow_nan=False)
 
 
@@ -28,7 +29,7 @@ def test_antiphase_keeps_spectrum_and_flags_mono(tmp_path, session):
     assert r['metrics']['lr_correlation']==pytest.approx(-1)
     assert r['metrics']['mono_downmix_change_db']==pytest.approx(-120)
     assert r['metrics']['band_energy_pct']['mid']>99.9
-    assert 'mono' in [h['id'] for h in r['hypotheses']]
+    assert 'phase-mid' in [h['id'] for h in r['hypotheses']]
 
 
 @pytest.mark.parametrize('channels',[1,2])

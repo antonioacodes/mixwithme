@@ -53,6 +53,9 @@ export type Hypothesis = {
   evidence: string;
   confidence: string;
   question: string;
+  recommendation?: string;
+  start_s?: number | null;
+  declared_plugins?: string[];
 };
 export type Result = {
   engine: string;

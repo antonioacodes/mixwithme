@@ -1,3 +1,8 @@
+# Atualização 0.2.0
+
+Consulte [ANALYSIS_V2.md](ANALYSIS_V2.md) para as medições e notas atuais.
+O texto abaixo documenta o motor 0.1.0, mantido para interpretar relatórios antigos.
+
 # Medições — motor 0.1.0
 
 O original não é modificado. Relatórios guardam SHA-256, motor, formato detectado
