@@ -196,12 +196,63 @@ def compare(tid: str, a: str, b: str):
     if a == b or any(r['track_id'] != tid or r['status'] != 'done' for r in rows):
         raise HTTPException(422, 'Escolha duas versões analisadas da mesma música.')
     results = [json.loads(r['result']) for r in rows]
-    keys = ('sample_peak_dbfs', 'rms_dbfs', 'crest_db', 'lr_correlation', 'mono_downmix_change_db')
+    keys = ('sample_peak_dbfs', 'rms_dbfs', 'crest_db', 'lr_correlation', 'mono_downmix_change_db', 'integrated_lufs', 'true_peak_dbtp', 'lra_lu', 'spectral_contrast_db', 'spectral_flatness', 'spectral_centroid_hz', 'attack_median_ms', 'attack_contrast_median_db', 'low_band_crest_median_db')
     changes = {}
     for k in keys:
-        av, bv = [r['metrics'][k] for r in results]
+        av, bv = [r['metrics'].get(k) for r in results]
         changes[k] = {'a': av, 'b': bv, 'delta_b_minus_a': bv-av if av is not None and bv is not None else None}
     return {'a': a, 'b': b, 'changes': changes,
             'warning': 'B − A, sem alinhamento temporal ou normalização. Diferença não significa melhora. Compare trechos equivalentes e iguale loudness na DAW.',
             'same_engine': results[0]['engine'] == results[1]['engine'],
             'duration_difference_s': results[1]['metrics']['duration_s']-results[0]['metrics']['duration_s']}
+
+
+@app.post('/versions/{vid}/reanalyze', status_code=202, dependencies=[Depends(auth)])
+def reanalyze(vid: str):
+    """Keep the previous report as an audit record; reuse the original WAV/session."""
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row=version_or_404(db,vid)
+        if row['status'] not in ('done','failed'):
+            raise HTTPException(409,'Esta versão já está em processamento.')
+        if not (data_dir()/row['filename']).is_file():
+            raise HTTPException(409,'WAV original indisponível.')
+        if db.execute("SELECT COUNT(*) FROM versions WHERE status IN ('uploading','queued','running')").fetchone()[0]>=3:
+            raise HTTPException(429,'Fila cheia; aguarde uma análise terminar.')
+        if db.execute('SELECT COUNT(*) FROM analysis_history WHERE version_id=?',(vid,)).fetchone()[0]>=10:
+            raise HTTPException(409,'Limite de dez revisões de análise nesta versão.')
+        if row['result']:
+            answers=[dict(a) for a in db.execute('SELECT question_id,answer,updated_at FROM answers WHERE version_id=?',(vid,))]
+            db.execute('INSERT INTO analysis_history(version_id,result,answers) VALUES (?,?,?)',(vid,row['result'],json.dumps(answers)))
+        db.execute("UPDATE versions SET status='queued',error=NULL WHERE id=?",(vid,))
+    return {'id':vid,'status':'queued'}
+
+
+@app.get('/versions/{vid}/analysis-history', dependencies=[Depends(auth)])
+def analysis_history(vid: str):
+    with connect() as db:
+        version_or_404(db,vid)
+        return [{'created_at':r['created_at'],'result':json.loads(r['result']),'answers':json.loads(r['answers'])} for r in db.execute('SELECT created_at,result,answers FROM analysis_history WHERE version_id=? ORDER BY id DESC',(vid,))]
+
+
+@app.get('/versions/{vid}/reference/{reference_id}', dependencies=[Depends(auth)])
+def compare_reference(vid: str, reference_id: str):
+    from .advanced import reference_scores
+    if vid==reference_id: raise HTTPException(422,'Escolha outra versão como referência.')
+    with connect() as db:
+        current=version_or_404(db,vid); reference=version_or_404(db,reference_id)
+    if current['status']!='done' or reference['status']!='done':
+        raise HTTPException(409,'As duas versões precisam estar analisadas.')
+    a=json.loads(current['result']); b=json.loads(reference['result'])
+    try: scores=reference_scores(a,b)
+    except ValueError as exc: raise HTTPException(422,str(exc)) from exc
+    differences=[]
+    for part in scores[0]['components']:
+        if abs(part['delta'])>=3:
+            differences.append({'band':part['metric'][5:],'delta_db':part['delta'],
+                'recommendation':'Compare esta faixa por escuta com volume igualado; ajuste primeiro a fonte na DAW. A diferença é de proporção de energia e não é um valor de EQ a aplicar.'})
+    return {'reference_id':reference_id,'reference_label':reference['label'],'scores':scores,
+        'frequency_differences':differences,
+        'duration_difference_s':a['metrics']['duration_s']-b['metrics']['duration_s'],
+        'listening_gain_db':b['metrics']['integrated_lufs']-a['metrics']['integrated_lufs'] if a['metrics'].get('integrated_lufs') is not None and b['metrics'].get('integrated_lufs') is not None else None,
+        'warning':'Referência escolhida por você. Sem alinhamento temporal ou alteração do áudio. Compare arranjos e trechos equivalentes; proximidade não implica melhora. O ganho sugerido é apenas para comparação na DAW e pode causar clipping se aplicado sem margem.'}

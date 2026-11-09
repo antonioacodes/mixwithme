@@ -29,6 +29,9 @@ def init():
           label TEXT NOT NULL, session TEXT NOT NULL, status TEXT NOT NULL,
           filename TEXT NOT NULL, result TEXT, error TEXT,
           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+        CREATE TABLE IF NOT EXISTS analysis_history (
+          id INTEGER PRIMARY KEY, version_id TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
+          result TEXT NOT NULL, answers TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
         CREATE INDEX IF NOT EXISTS versions_track ON versions(track_id);
         CREATE TABLE IF NOT EXISTS answers (
           version_id TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE,

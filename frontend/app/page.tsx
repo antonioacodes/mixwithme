@@ -39,6 +39,7 @@ export default function Home() {
     async (path: string, init: RequestInit = {}) => {
       const res = await fetch("/api" + path, {
         ...init,
+        cache: "no-store",
         headers: { Authorization: "Bearer " + token, ...init.headers },
       });
       if (!res.ok) {
@@ -501,6 +502,32 @@ export default function Home() {
                                 Carregar áudio
                               </button>
                               <button
+                                disabled={
+                                  busy ||
+                                  ["uploading", "queued", "running"].includes(
+                                    selected.status,
+                                  )
+                                }
+                                onClick={() =>
+                                  void run(async () => {
+                                    await api(
+                                      `/versions/${selected.id}/reanalyze`,
+                                      { method: "POST" },
+                                    );
+                                    setVersions(
+                                      await (
+                                        await api(`/tracks/${tid}/versions`)
+                                      ).json(),
+                                    );
+                                    setNotice(
+                                      "Reanálise solicitada. O WAV e o contexto original foram preservados.",
+                                    );
+                                  })
+                                }
+                              >
+                                Reanalisar WAV
+                              </button>
+                              <button
                                 className="danger subtle"
                                 disabled={
                                   busy ||
@@ -539,6 +566,8 @@ export default function Home() {
                             <Report
                               key={selected.id}
                               version={selected}
+                              tracks={tracks}
+                              api={api}
                               saveAnswer={async (question_id, answer) => {
                                 await api(`/versions/${selected.id}/answers`, {
                                   method: "POST",
@@ -560,10 +589,14 @@ export default function Home() {
                                 <h3>
                                   {selected.status === "running"
                                     ? "Medindo o WAV…"
-                                    : "Aguardando o worker local…"}
+                                    : selected.status === "uploading"
+                                      ? "Recebendo seu WAV…"
+                                      : "WAV recebido — aguardando análise…"}
                                 </h3>
                                 <p>
-                                  A página acompanha o status automaticamente.
+                                  Seu arquivo já está na VPS. A análise pode
+                                  levar até 3 minutos e esta página acompanha o
+                                  status.
                                 </p>
                               </div>
                             )

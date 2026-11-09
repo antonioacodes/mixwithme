@@ -4,7 +4,7 @@ import numpy as np
 import soundfile as sf
 from scipy.signal import welch
 
-ENGINE = 'mixwithme-dsp/0.1.0'
+ENGINE = 'mixwithme-dsp/0.2.0'
 BANDS = [('sub', 20, 60), ('bass', 60, 250), ('low_mid', 250, 500),
          ('mid', 500, 2000), ('presence', 2000, 6000), ('air', 6000, 20001)]
 
@@ -150,9 +150,16 @@ def analyze(path, session):
     declared_subtype = {'16': 'PCM_16', '24': 'PCM_24', '32-float': 'FLOAT'}[session['export_bit_depth']]
     if info.samplerate != session['export_sample_rate'] or info.subtype != declared_subtype:
         warnings.append('O formato detectado difere do contexto declarado. As medições usam o arquivo real.')
-    return {'engine': ENGINE, 'sha256': digest.hexdigest(), 'metrics': metrics,
+    from .advanced import descriptors, loudness
+    from .diagnostics import enrich
+    metrics.update(descriptors(path))
+    metrics.update(loudness(path, info.duration, silent))
+    metrics['peak_to_loudness_db'] = metrics['true_peak_dbtp']-metrics['integrated_lufs'] if metrics['true_peak_dbtp'] is not None and metrics['integrated_lufs'] is not None else None
+    report = {'engine': ENGINE, 'sha256': digest.hexdigest(), 'metrics': metrics,
             'scores': scores, 'hypotheses': hypotheses, 'warnings': warnings,
             'methods': {'spectrum': 'Welch/Hann 4096 samples, 50% overlap within 1 s blocks; channel-power mean; duration weighted; shares of all-bin power.',
                         'rms': 'Unweighted, all samples and channels. dBFS = 20 log10(amplitude).',
                         'stereo': 'Pearson L/R, DC removed; mono=(L+R)/2; energy relative to mean L/R power.',
                         'transients': 'Median of per-second peak/RMS crest; no event detection.'}}
+
+    return enrich(report, session)

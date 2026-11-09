@@ -22,10 +22,11 @@ Sem stems, correção automática, GPU, serviços pagos, LLM ou chat livre. Perg
 são regras determinísticas. Respostas registram contexto humano e não confirmam
 diagnósticos automaticamente. Não alteram os números medidos.
 
-**LUFS e true peak ainda não são calculados.** RMS não é loudness percebido;
-sample peak não é true peak. A/B não alinha nem normaliza os arquivos. Frequências,
-clareza e transientes mostram nota indisponível, com motivo. Dinâmica/estéreo têm
-triagens 50/100, nunca uma nota geral de qualidade. Silêncio não recebe nota positiva.
+**Motor 0.2.0:** LUFS integrado, true peak, LRA (a partir de 30 s), descritores
+de clareza, ataques e análise por segundo/faixa. As cinco notas medem proximidade
+a uma referência escolhida; não existe nota geral de qualidade. Recomendações
+ligam evidências a testes de escuta e plugins declarados. Reanálise preserva o
+relatório anterior. Leia [métodos e fórmulas v2](docs/ANALYSIS_V2.md).
 
 Leia [os métodos](docs/MEASUREMENTS.md) e [a operação Ubuntu/CloudPanel](docs/DEPLOYMENT.md).
 
