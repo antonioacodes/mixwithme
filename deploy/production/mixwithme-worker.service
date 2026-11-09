@@ -1,0 +1,29 @@
+[Unit]
+Description=MixWithMe local DSP worker
+After=network.target
+
+[Service]
+User=mixwithme
+Group=mixwithme
+WorkingDirectory=/opt/mixwithme/current/backend
+Environment=DATA_DIR=/var/lib/mixwithme
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+ExecStart=/opt/mixwithme/current/backend/.venv/bin/python -m app.worker
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mixwithme
+MemoryMax=1536M
+CPUQuota=150%
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

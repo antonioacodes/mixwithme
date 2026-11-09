@@ -1,7 +1,7 @@
 # Ubuntu / CloudPanel — operação pessoal
 
 Alvo: Ubuntu com Python 3.12 e Node 22, 4 vCPU, 8 GB RAM. Exemplos em `deploy/`;
-não foram executados em uma VPS real. Não há Docker, Redis, GPU ou dependência paga.
+para configuração manual; a automação de produção está descrita ao final. Não há Docker, Redis, GPU ou dependência paga.
 
 ## Instalação
 
@@ -93,3 +93,42 @@ não confunda auditoria sem alertas com garantia de ausência de vulnerabilidade
 LUFS/true peak com validação, investigação que interprete respostas com evidência,
 revisão de contexto por versão na interface, A/B alinhado/loudness matched e testes
 de carga na VPS. Nenhuma dessas funções é simulada como se estivesse pronta.
+
+## Publicação automatizada
+
+A implantação em `deploy/production/` usa Node 22/Python 3.12, portas locais
+3100 (web) e 8100 (API), usuário sem login `mixwithme` e releases em
+`/opt/mixwithme/releases`. O checkout configurado no secret continua protegido
+contra alterações locais. Dados ficam em `/var/lib/mixwithme`; segredo em
+`/etc/mixwithme.env` (root, 0600), nunca no checkout ou no GitHub.
+
+O administrador revisa e executa uma vez:
+
+```sh
+bash deploy/production/install.sh /caminho/absoluto/do/checkout dominio.example
+```
+
+O instalador exige o certificado já existente do CloudPanel, guarda backup do
+vhost, valida Nginx antes de recarregar e mantém o caminho ACME do checkout.
+Revisar a renovação TLS no CloudPanel após alterar o vhost. Ele cria uma permissão
+sudo restrita a `/usr/local/sbin/mixwithme-restart`, sem argumentos; esse arquivo
+pertence a root e não é atualizado automaticamente pelo Git. Mudanças futuras
+nele ou nas unidades systemd exigem nova revisão administrativa.
+
+Cada push na main sincroniza o checkout, cria uma release separada, instala as
+versões travadas, executa testes Python, auditoria npm e build. Só então troca o
+link current e reinicia os três serviços. O helper verifica API, frontend e
+worker por até 80 segundos. Se falhar, o script restaura o link anterior e
+reinicia; na primeira instalação ainda não existe versão anterior para restaurar.
+O timeout total é de 25 minutos, com 20 minutos para build/ativação remota.
+
+Antes da ativação, o helper para API/worker e faz snapshot SQLite em
+`/var/backups/mixwithme`. WAVs não são copiados a cada deploy; o backup completo
+externo descrito acima continua necessário. O rollback automático é apenas de
+código, compatível com o esquema inicial; não autoriza downgrade de migrações.
+
+Há um limite de dez diretórios de releases (inclusive builds falhos) e 4 GiB
+livres exigidos para build. Ao atingir o limite, o deploy recusa a publicação até
+o administrador arquivar/remover releases antigas, preservando current e a
+versão anterior. Snapshots do banco também exigem revisão periódica de retenção.
+Nenhum arquivo do usuário é apagado automaticamente.
