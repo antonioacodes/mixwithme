@@ -65,3 +65,11 @@ estar na branch padrão para aparecer no GitHub.
 
 Se a VPS for reinstalada e mudar sua chave SSH, valide a nova identidade fora do
 workflow antes de atualizar `VPS_KNOWN_HOSTS`; não desative StrictHostKeyChecking.
+
+## Extensão: aplicativo completo
+
+Com o protótipo, o fluxo também executa `deploy/production/release.sh` após o
+fast-forward confirmado. O modo check-only continua sem build ou reinício.
+Consulte `DEPLOYMENT.md` para a preparação administrativa única, releases,
+verificações de saúde, limites de retenção e recuperação. Segredos SSH existentes
+continuam sendo usados; nenhum novo segredo de acesso é publicado no código.

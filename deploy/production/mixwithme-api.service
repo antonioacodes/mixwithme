@@ -1,0 +1,24 @@
+[Unit]
+Description=MixWithMe API
+After=network.target
+
+[Service]
+User=mixwithme
+Group=mixwithme
+WorkingDirectory=/opt/mixwithme/current/backend
+EnvironmentFile=/etc/mixwithme.env
+ExecStart=/opt/mixwithme/current/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 1 --limit-concurrency 12 --timeout-keep-alive 5
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mixwithme
+MemoryMax=768M
+CPUQuota=100%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

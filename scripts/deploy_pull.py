@@ -109,7 +109,12 @@ def main():
         origins = {f'https://github.com/{repo}.git', f'https://github.com/{repo}',
                    f'git@github.com:{repo}.git', f'ssh://git@github.com/{repo}.git'}
         result = update(config['path'], config['sha'], origins, config['user'], config['check_only'])
-        print(json.dumps(result))
+        print(json.dumps(result), flush=True)
+        if not config['check_only'] and result['status'] in ('updated', 'unchanged'):
+            deployed = subprocess.run(['bash', 'deploy/production/release.sh', config['sha']],
+                                      cwd=config['path'], timeout=1200)
+            if deployed.returncode:
+                raise DeployError('Application build or activation failed; inspect release logs.')
     except OSError:
         print('Deploy refused: cannot access project files. Check path and permissions.', file=sys.stderr)
         return 1
