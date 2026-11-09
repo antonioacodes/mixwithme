@@ -1,0 +1,57 @@
+name: Deploy automático na VPS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/deploy.yml'
+      - 'scripts/deploy*'
+      - 'tests/test_deploy.py'
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: 'Somente verificar acesso e checkout, sem atualizar arquivos'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Testar proteções do deploy
+        run: |
+          bash -n scripts/deploy-ssh.sh
+          python3 -m unittest discover -s tests -p 'test_deploy.py' -v
+
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: mixwithme-vps-main
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verificar e atualizar checkout por SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH }}
+          TARGET_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+          CHECK_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.check_only && 'true' || 'false' }}
+        run: bash scripts/deploy-ssh.sh
