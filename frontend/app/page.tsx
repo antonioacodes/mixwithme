@@ -189,7 +189,18 @@ export default function Home() {
           body: flpFile,
         })
       ).json();
-      const importedInserts = result.context.mixer_inserts || [];
+      const allInserts = result.context.mixer_inserts || [];
+      const importedInserts = allInserts.filter((insert: any) => {
+        const hasPlugin = (insert.slots || []).some((slot: any) => String(slot.name || "").trim());
+        const hasName = String(insert.name || "").trim();
+        const hasRoute = Number.isInteger(insert.route_to) && insert.route_to !== 4294967295;
+        return hasPlugin || hasName || hasRoute;
+      });
+      const activeIndexByOriginal = new Map<number, number>();
+      allInserts.forEach((insert: any, originalIndex: number) => {
+        if (importedInserts.includes(insert))
+          activeIndexByOriginal.set(originalIndex, importedInserts.indexOf(insert));
+      });
       const kindFor = (name: string): Session["channels"][number]["kind"] => {
         const n = name.toLowerCase();
         if (n.includes("master")) return "master";
@@ -212,7 +223,9 @@ export default function Home() {
         const master = { id: "flp-master", name: "Master", kind: "master" as const, fader_db: 0, pan: 0, width: 1, plugins: [] };
         const routes = channels.map((channel: any, index: number) => {
           const target = importedInserts[index]?.route_to;
-          const targetIndex = Number.isInteger(target) && target < channels.length && target !== 4294967295 ? target : channels.length;
+          const targetIndex = Number.isInteger(target) && target !== 4294967295 && activeIndexByOriginal.has(target)
+            ? activeIndexByOriginal.get(target)!
+            : channels.length;
           return { source: channel.id, target: targetIndex === channels.length ? master.id : channels[targetIndex].id, kind: "output" as const, gain_db: 0 };
         });
         setSession((current) => ({ ...current, bpm: result.context.tempo || current.bpm, channels: [...channels, master], routes }));
@@ -221,7 +234,7 @@ export default function Home() {
       setFlpFile(null);
       if (flpInputRef.current) flpInputRef.current.value = "";
       setNotice(
-        `FLP importado: ${result.context.channels.length} canais e ${result.context.mixer_inserts.length} inserts encontrados. Revise o contexto antes de salvar.`,
+        `FLP importado: ${importedInserts.length} canais ativos do mixer encontrados. Canais do Channel Rack sem plugin, nome ou roteamento foram ignorados. Revise o contexto antes de salvar.`,
       );
       await refresh();
     });
