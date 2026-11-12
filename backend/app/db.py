@@ -27,7 +27,7 @@ def init():
         CREATE TABLE IF NOT EXISTS versions (
           id TEXT PRIMARY KEY, track_id TEXT NOT NULL REFERENCES tracks(id),
           label TEXT NOT NULL, session TEXT NOT NULL, status TEXT NOT NULL,
-          filename TEXT NOT NULL, result TEXT, error TEXT,
+          filename TEXT NOT NULL, reference_filename TEXT, result TEXT, error TEXT,
           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
         CREATE TABLE IF NOT EXISTS analysis_history (
           id INTEGER PRIMARY KEY, version_id TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE,
@@ -39,3 +39,11 @@ def init():
           updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
           PRIMARY KEY(version_id, question_id));
         ''')
+        columns = {r[1] for r in db.execute('PRAGMA table_info(versions)')}
+        if 'reference_filename' not in columns:
+            db.execute('ALTER TABLE versions ADD COLUMN reference_filename TEXT')
+        track_columns = {r[1] for r in db.execute('PRAGMA table_info(tracks)')}
+        if 'flp_filename' not in track_columns:
+            db.execute('ALTER TABLE tracks ADD COLUMN flp_filename TEXT')
+        if 'flp_context' not in track_columns:
+            db.execute('ALTER TABLE tracks ADD COLUMN flp_context TEXT')

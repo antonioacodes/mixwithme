@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import shutil
+import struct
 import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -12,6 +13,7 @@ from .db import connect, data_dir, init
 from .models import TrackCreate, Session, Answer
 from .dsp import inspect
 from .security import RequestGuard
+from .flp import parse as parse_flp
 
 MAX_UPLOAD = 250 * 1024 * 1024
 MAX_LIBRARY = 40  # <= 10 GiB of WAVs; reserve slots before accepting bytes
@@ -58,6 +60,20 @@ def serialize(row):
     return out
 
 
+async def save_wav(request: Request, path):
+    async def receive():
+        size = 0
+        with path.open('xb') as f:
+            os.chmod(path, 0o600)
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    raise HTTPException(413, 'Limite de 250 MiB por WAV.')
+                f.write(chunk)
+    await asyncio.wait_for(receive(), timeout=120)
+    await asyncio.to_thread(inspect, path)
+
+
 @app.get('/health')
 def health():
     return {'status': 'ok'}
@@ -95,6 +111,41 @@ def versions(tid: str):
         return [serialize(r) for r in db.execute('SELECT * FROM versions WHERE track_id=? ORDER BY created_at DESC', (tid,))]
 
 
+@app.post('/tracks/{tid}/flp', dependencies=[Depends(auth)])
+async def upload_flp(tid: str, request: Request):
+    """Import mixer context from an FL Studio project without opening plugins."""
+    content_type = request.headers.get('content-type', '').split(';')[0]
+    if content_type not in ('application/octet-stream', 'application/x-flp', 'application/octet-stream'):
+        raise HTTPException(415, 'Envie o projeto FL Studio como arquivo .flp.')
+    with connect() as db:
+        version = db.execute('SELECT 1 FROM tracks WHERE id=?', (tid,)).fetchone()
+        if not version:
+            raise HTTPException(404, 'Música não encontrada.')
+    filename = tid + '.flp'
+    path = data_dir() / filename
+    try:
+        size = 0
+        with path.open('xb') as out:
+            os.chmod(path, 0o600)
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > 10 * 1024 * 1024:
+                    raise HTTPException(413, 'Limite de 10 MiB por projeto FLP.')
+                out.write(chunk)
+        context = await asyncio.to_thread(parse_flp, path)
+        with connect() as db:
+            db.execute('UPDATE tracks SET flp_filename=?,flp_context=? WHERE id=?',
+                       (filename, json.dumps(context, ensure_ascii=False), tid))
+    except BaseException as exc:
+        path.unlink(missing_ok=True)
+        if isinstance(exc, HTTPException):
+            raise
+        if isinstance(exc, (ValueError, struct.error)):
+            raise HTTPException(422, 'FLP inválido ou formato não suportado.') from exc
+        raise
+    return {'saved': True, 'context': context}
+
+
 @app.post('/tracks/{tid}/versions', status_code=202, dependencies=[Depends(auth)])
 async def upload(tid: str, request: Request, label: str = 'Nova versão'):
     if not 1 <= len(label.strip()) <= 80:
@@ -120,17 +171,7 @@ async def upload(tid: str, request: Request, label: str = 'Nova versão'):
         db.execute('INSERT INTO versions(id,track_id,label,session,status,filename) VALUES (?,?,?,?,?,?)',
                    (vid, tid, label.strip(), track['session'], 'uploading', filename))
     try:
-        async def receive():
-            size = 0
-            with path.open('xb') as f:
-                os.chmod(path, 0o600)
-                async for chunk in request.stream():
-                    size += len(chunk)
-                    if size > MAX_UPLOAD:
-                        raise HTTPException(413, 'Limite de 250 MiB por WAV.')
-                    f.write(chunk)
-        await asyncio.wait_for(receive(), timeout=120)
-        await asyncio.to_thread(inspect, path)
+        await save_wav(request, path)
         with connect() as db:
             db.execute("UPDATE versions SET status='queued' WHERE id=?", (vid,))
     except BaseException as exc:
@@ -145,6 +186,30 @@ async def upload(tid: str, request: Request, label: str = 'Nova versão'):
             raise HTTPException(422, 'WAV inválido: verifique formato, duração e canais.') from exc
         raise
     return {'id': vid, 'status': 'queued'}
+
+
+@app.post('/versions/{vid}/reference-audio', dependencies=[Depends(auth)])
+async def reference_audio(vid: str, request: Request):
+    content_type = request.headers.get('content-type', '').split(';')[0]
+    if content_type not in ('audio/wav', 'audio/x-wav', 'application/octet-stream'):
+        raise HTTPException(415, 'Envie a referência em WAV como corpo binário.')
+    filename = vid + '.reference.wav'
+    path = data_dir() / filename
+    with connect() as db:
+        row = version_or_404(db, vid)
+        old = row['reference_filename']
+        if old:
+            (data_dir() / old).unlink(missing_ok=True)
+    try:
+        await save_wav(request, path)
+        with connect() as db:
+            db.execute('UPDATE versions SET reference_filename=? WHERE id=?', (filename, vid))
+    except BaseException as exc:
+        path.unlink(missing_ok=True)
+        if isinstance(exc, (HTTPException, ValueError, RuntimeError)):
+            raise HTTPException(422, 'Referência inválida: envie um WAV válido.') from exc
+        raise
+    return {'saved': True}
 
 
 @app.get('/versions/{vid}', dependencies=[Depends(auth)])
@@ -173,6 +238,8 @@ def delete_version(vid: str):
         if row['status'] in ('running', 'uploading'):
             raise HTTPException(409, 'Aguarde o trabalho ativo terminar.')
         (data_dir()/row['filename']).unlink(missing_ok=True)
+        if row['reference_filename']:
+            (data_dir()/row['reference_filename']).unlink(missing_ok=True)
         db.execute('DELETE FROM versions WHERE id=?', (vid,))
     return {'deleted': True}
 
