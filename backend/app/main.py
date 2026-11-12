@@ -123,21 +123,27 @@ async def upload_flp(tid: str, request: Request):
             raise HTTPException(404, 'Música não encontrada.')
     filename = tid + '.flp'
     path = data_dir() / filename
+    # Uploads are retried by browsers/proxies.  Never use exclusive-create on
+    # the final path: a retry must not turn into a 500 or destroy a valid
+    # previously imported project.  Parse a private temporary file and replace
+    # the published file only after the parse succeeds.
+    temp_path = data_dir() / f'{tid}.{uuid.uuid4().hex}.uploading'
     try:
         size = 0
-        with path.open('xb') as out:
-            os.chmod(path, 0o600)
+        with temp_path.open('xb') as out:
+            os.chmod(temp_path, 0o600)
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > 10 * 1024 * 1024:
                     raise HTTPException(413, 'Limite de 10 MiB por projeto FLP.')
                 out.write(chunk)
-        context = await asyncio.to_thread(parse_flp, path)
+        context = await asyncio.to_thread(parse_flp, temp_path)
+        os.replace(temp_path, path)
         with connect() as db:
             db.execute('UPDATE tracks SET flp_filename=?,flp_context=? WHERE id=?',
                        (filename, json.dumps(context, ensure_ascii=False), tid))
     except BaseException as exc:
-        path.unlink(missing_ok=True)
+        temp_path.unlink(missing_ok=True)
         if isinstance(exc, HTTPException):
             raise
         if isinstance(exc, (ValueError, struct.error)):
@@ -323,3 +329,4 @@ def compare_reference(vid: str, reference_id: str):
         'duration_difference_s':a['metrics']['duration_s']-b['metrics']['duration_s'],
         'listening_gain_db':b['metrics']['integrated_lufs']-a['metrics']['integrated_lufs'] if a['metrics'].get('integrated_lufs') is not None and b['metrics'].get('integrated_lufs') is not None else None,
         'warning':'Referência escolhida por você. Sem alinhamento temporal ou alteração do áudio. Compare arranjos e trechos equivalentes; proximidade não implica melhora. O ganho sugerido é apenas para comparação na DAW e pode causar clipping se aplicado sem margem.'}
+
