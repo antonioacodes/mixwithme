@@ -93,6 +93,7 @@ export type Version = {
   session: Session;
   created_at: string;
   error: string | null;
+  reference_filename?: string | null;
   result: Result | null;
   answers?: { question_id: string; answer: string }[];
 };

@@ -19,7 +19,10 @@ class RequestGuard:
         if not public and (len(expected) < 39 or not hmac.compare_digest(headers.get(b'authorization', b''), expected)):
             return await JSONResponse({'detail': 'Acesso não autorizado.'}, 401,
                                       headers={'WWW-Authenticate': 'Bearer'})(scope, receive, send)
-        upload = scope['method'] == 'POST' and re.fullmatch(r'/tracks/[a-f0-9]+/versions', scope['path'])
+        upload = scope['method'] == 'POST' and (
+            re.fullmatch(r'/tracks/[a-f0-9]+/versions', scope['path'])
+            or re.fullmatch(r'/versions/[a-f0-9]+/reference-audio', scope['path'])
+        )
         maximum = 250*1024*1024 if upload else 512*1024
         try:
             size = int(headers.get(b'content-length', b'0'))

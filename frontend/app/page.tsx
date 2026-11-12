@@ -30,11 +30,13 @@ export default function Home() {
   const [dirty, setDirty] = useState(false);
   const [label, setLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [audio, setAudio] = useState("");
   const audioRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
   const api = useCallback(
     async (path: string, init: RequestInit = {}) => {
       const res = await fetch("/api" + path, {
@@ -392,9 +394,25 @@ export default function Home() {
                               )
                             ).json();
                             setVid(v.id);
+                            if (referenceFile) {
+                              if (referenceFile.size > 250 * 1024 * 1024)
+                                throw new Error("A referência também deve ter até 250 MiB.");
+                              const referenceResponse = await api(`/versions/${v.id}/reference-audio`, {
+                                method: "POST",
+                                headers: { "Content-Type": "audio/wav" },
+                                body: referenceFile,
+                              });
+                              if (!referenceResponse.ok) {
+                                const message = await referenceResponse.text();
+                                throw new Error(message || "Não foi possível enviar a referência.");
+                              }
+                            }
                             setFile(null);
+                            setReferenceFile(null);
                             if (fileInputRef.current)
                               fileInputRef.current.value = "";
+                            if (referenceInputRef.current)
+                              referenceInputRef.current.value = "";
                             setLabel("");
                             setVersions(
                               await (
@@ -402,7 +420,9 @@ export default function Home() {
                               ).json(),
                             );
                             setNotice(
-                              "WAV recebido. A análise está na fila local.",
+                              referenceFile
+                                ? "WAV e referência recebidos. A análise está na fila local."
+                                : "WAV recebido. A análise está na fila local.",
                             );
                           });
                         }}
@@ -437,6 +457,20 @@ export default function Home() {
                               setFile(e.target.files?.[0] || null)
                             }
                           />
+                        </label>
+                        <label>
+                          Música de referência (opcional)
+                          <input
+                            ref={referenceInputRef}
+                            type="file"
+                            accept=".wav,audio/wav"
+                            onChange={(e) =>
+                              setReferenceFile(e.target.files?.[0] || null)
+                            }
+                          />
+                          <small className="muted">
+                            Escolha um WAV autorizado, no mesmo estilo e com a qualidade que você quer alcançar.
+                          </small>
                         </label>
                         <button
                           className="primary"
