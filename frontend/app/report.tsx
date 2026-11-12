@@ -250,6 +250,23 @@ export function Report({
             tracks={tracks}
             api={api}
           />
+          {r.checks && r.checks.length > 0 && (
+            <section className="panel">
+              <span className="eyebrow">CHECKS TÉCNICOS</span>
+              <h3>Medição, evidência e próximo passo</h3>
+              <p>Esses estados não são uma nota de qualidade. Eles mostram o que foi medido e o que ainda depende do destino ou da escuta.</p>
+              <div className="hypotheses">
+                {r.checks.map((check) => (
+                  <article className="panel" key={check.id}>
+                    <span className={`badge check-${check.status}`}>{check.status}</span>
+                    <h3>{check.label}</h3>
+                    <p className="evidence">{check.evidence}</p>
+                    <p>{check.next_step}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
       {!timeline.length && (

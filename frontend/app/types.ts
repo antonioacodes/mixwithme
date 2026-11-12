@@ -81,6 +81,13 @@ export type Result = {
     reason: string;
     provisional: boolean;
   }[];
+  checks?: {
+    id: string;
+    label: string;
+    status: "pass" | "warning" | "indeterminate" | "not_evaluated";
+    evidence: string;
+    next_step: string;
+  }[];
   hypotheses: Hypothesis[];
   warnings: string[];
   methods: Record<string, string>;

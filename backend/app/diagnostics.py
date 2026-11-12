@@ -65,6 +65,40 @@ def enrich(report, session):
         plugins=[f"{c['name']}: {p['name']}" for c in session['channels'] for p in c['plugins'] if not p['bypass'] and p['kind'] in kinds]
         h['declared_plugins']=plugins[:8]
     report['hypotheses']=findings
+    # Objective gates derived from the installed measurement/mixing guidance.
+    # These are checks, not a universal quality grade or a perceptual verdict.
+    peak = m.get('sample_peak_dbfs')
+    true_peak = m.get('true_peak_dbtp')
+    mono = m.get('mono_downmix_change_db')
+    checks = []
+    def check(key, label, status, evidence, next_step):
+        checks.append({'id': key, 'label': label, 'status': status,
+                       'evidence': evidence, 'next_step': next_step})
+    check('source_decode', 'Formato e decodificação', 'pass',
+          f"{m['channels']} canal(is), {m['sample_rate_hz']} Hz, {m['subtype']}, {m['duration_s']:.2f} s.",
+          'Nenhuma ação técnica indicada pelo formato.')
+    if peak is None:
+        check('sample_peak', 'Pico de amostra', 'indeterminate', 'Pico não disponível.', 'Reanalise o WAV.')
+    elif peak >= -0.01:
+        check('sample_peak', 'Pico de amostra', 'warning', f'{peak:.2f} dBFS; há amostras próximas de full scale.', 'Confira clipping e o ceiling no master.')
+    else:
+        check('sample_peak', 'Pico de amostra', 'pass', f'{peak:.2f} dBFS.', 'Nenhuma amostra próxima de full scale foi encontrada.')
+    if true_peak is None:
+        check('true_peak', 'True peak', 'indeterminate', 'True peak não disponível.', 'Reanalise com o medidor de loudness habilitado.')
+    elif true_peak > -1:
+        check('true_peak', 'True peak', 'warning', f'{true_peak:.2f} dBTP; a margem depende da entrega.', 'Confira a especificação do destino e o limiter true-peak.')
+    else:
+        check('true_peak', 'True peak', 'pass', f'{true_peak:.2f} dBTP.', 'Ainda valide o arquivo exportado após qualquer codec.')
+    if mono is None:
+        check('mono', 'Compatibilidade mono', 'not_evaluated', 'Mono não foi calculado para este arquivo.', 'Use um WAV estéreo para avaliar o downmix.')
+    elif mono < -1:
+        check('mono', 'Compatibilidade mono', 'warning', f'Downmix medido em {mono:.2f} dB.', 'Ouça em mono e investigue a faixa/efeito que perde corpo.')
+    else:
+        check('mono', 'Compatibilidade mono', 'pass', f'Downmix medido em {mono:.2f} dB.', 'Confirme por escuta em mono; o número não isola instrumentos.')
+    check('loudness_target', 'Meta de loudness', 'not_evaluated',
+          'Nenhum destino (streaming, broadcast ou vídeo) foi especificado.',
+          'Escolha o destino antes de tratar LUFS como aprovação ou reprovação.')
+    report['checks'] = checks
     report['scores']=[{'category':c,'score':None,'provisional':True,'reason':'Selecione uma versão de referência na comparação para calcular proximidade com fórmula explícita. Os indicadores e testes de escuta abaixo já estão disponíveis.'} for c in ('frequencies','dynamics','stereo','clarity','transients')]
     report['warnings']=[w for w in report['warnings'] if 'não implementados' not in w and 'Pontuações' not in w]
     report['warnings'] += ['As notas de referência medem semelhança de descritores, não qualidade musical; não há nota geral.',
@@ -75,5 +109,6 @@ def enrich(report, session):
         'clarity':'STFT Hann 2048, 50% overlap within 1s windows; average channel powers; median centroid/flatness and per-band 90th/10th-percentile contrast; excludes RMS < -120 dBFS.',
         'band_stereo':'Real spectral cross-power / sqrt(L power × R power), by band and 1s block; differs from DC-removed global Pearson.',
         'transients':'10ms RMS envelope, local-peak prominence >=4dB, spacing >=80ms; valley within previous 200ms to peak; 40–250Hz Butterworth order 4 causal bandpass crest.',
-        'scoring':'No quality score. Reference comparison: 100*(1-mean(min(1,abs(delta)/scale))); same-engine only; missing metrics excluded with coverage shown.'})
+        'scoring':'No quality score. Reference comparison: 100*(1-mean(min(1,abs(delta)/scale))); same-engine only; missing metrics excluded with coverage shown.',
+        'guidance':'Checks separate pass/warning/indeterminate/not_evaluated; thresholds are delivery checks, not mainstream quality targets.'})
     return report
