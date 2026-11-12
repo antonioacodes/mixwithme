@@ -65,6 +65,14 @@ server {
         add_header Cache-Control "no-store" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
+    location ~ ^/api/tracks/[a-f0-9]+/flp$ {
+        client_max_body_size 10m;
+        proxy_request_buffering off;
+        proxy_pass http://127.0.0.1:8100;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
     location /api/ {
         client_max_body_size 512k;
         limit_req zone=mixwithme burst=20 nodelay;
