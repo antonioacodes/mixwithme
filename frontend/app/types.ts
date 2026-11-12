@@ -81,6 +81,13 @@ export type Result = {
     reason: string;
     provisional: boolean;
   }[];
+  checks?: {
+    id: string;
+    label: string;
+    status: "pass" | "warning" | "indeterminate" | "not_evaluated";
+    evidence: string;
+    next_step: string;
+  }[];
   hypotheses: Hypothesis[];
   warnings: string[];
   methods: Record<string, string>;
@@ -93,6 +100,7 @@ export type Version = {
   session: Session;
   created_at: string;
   error: string | null;
+  reference_filename?: string | null;
   result: Result | null;
   answers?: { question_id: string; answer: string }[];
 };

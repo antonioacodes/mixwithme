@@ -30,11 +30,15 @@ export default function Home() {
   const [dirty, setDirty] = useState(false);
   const [label, setLabel] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [flpFile, setFlpFile] = useState<File | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [audio, setAudio] = useState("");
   const audioRef = useRef("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
+  const flpInputRef = useRef<HTMLInputElement>(null);
   const api = useCallback(
     async (path: string, init: RequestInit = {}) => {
       const res = await fetch("/api" + path, {
@@ -171,6 +175,26 @@ export default function Home() {
       setNotice(
         "Sessão salva. Próximos uploads usarão este contexto; versões anteriores preservam o original.",
       );
+    });
+  const importFlp = () =>
+    run(async () => {
+      if (!tid) throw new Error("Salve a música antes de importar o FLP.");
+      if (!flpFile) throw new Error("Selecione um arquivo .flp.");
+      if (flpFile.size > 10 * 1024 * 1024)
+        throw new Error("O projeto FLP deve ter até 10 MiB.");
+      const result = await (
+        await api(`/tracks/${tid}/flp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: flpFile,
+        })
+      ).json();
+      setFlpFile(null);
+      if (flpInputRef.current) flpInputRef.current.value = "";
+      setNotice(
+        `FLP importado: ${result.context.channels.length} canais e ${result.context.mixer_inserts.length} inserts encontrados. Revise o contexto antes de salvar.`,
+      );
+      await refresh();
     });
   return (
     <div className="app-shell">
@@ -345,6 +369,23 @@ export default function Home() {
                   </div>
                   <Context session={session} onChange={edit} />
                   <Mixer session={session} onChange={edit} />
+                  <section className="panel">
+                    <span className="eyebrow">PROJETO FL STUDIO</span>
+                    <h3>Importar estrutura do mixer (.flp)</h3>
+                    <p className="muted">
+                      O projeto é lido localmente para extrair nomes, inserts e roteamento declarado. Plugins não são abertos nem executados; revise o resultado antes de salvar.
+                    </p>
+                    <input
+                      ref={flpInputRef}
+                      type="file"
+                      accept=".flp,application/octet-stream"
+                      disabled={!tid || busy}
+                      onChange={(e) => setFlpFile(e.target.files?.[0] || null)}
+                    />
+                    <button type="button" onClick={() => void importFlp()} disabled={!tid || !flpFile || busy}>
+                      {busy ? "Importando…" : "Importar FLP"}
+                    </button>
+                  </section>
                   <div className="save-footer">
                     <span className="muted">
                       {dirty
@@ -392,9 +433,25 @@ export default function Home() {
                               )
                             ).json();
                             setVid(v.id);
+                            if (referenceFile) {
+                              if (referenceFile.size > 250 * 1024 * 1024)
+                                throw new Error("A referência também deve ter até 250 MiB.");
+                              const referenceResponse = await api(`/versions/${v.id}/reference-audio`, {
+                                method: "POST",
+                                headers: { "Content-Type": "audio/wav" },
+                                body: referenceFile,
+                              });
+                              if (!referenceResponse.ok) {
+                                const message = await referenceResponse.text();
+                                throw new Error(message || "Não foi possível enviar a referência.");
+                              }
+                            }
                             setFile(null);
+                            setReferenceFile(null);
                             if (fileInputRef.current)
                               fileInputRef.current.value = "";
+                            if (referenceInputRef.current)
+                              referenceInputRef.current.value = "";
                             setLabel("");
                             setVersions(
                               await (
@@ -402,7 +459,9 @@ export default function Home() {
                               ).json(),
                             );
                             setNotice(
-                              "WAV recebido. A análise está na fila local.",
+                              referenceFile
+                                ? "WAV e referência recebidos. A análise está na fila local."
+                                : "WAV recebido. A análise está na fila local.",
                             );
                           });
                         }}
@@ -437,6 +496,20 @@ export default function Home() {
                               setFile(e.target.files?.[0] || null)
                             }
                           />
+                        </label>
+                        <label>
+                          Música de referência (opcional)
+                          <input
+                            ref={referenceInputRef}
+                            type="file"
+                            accept=".wav,audio/wav"
+                            onChange={(e) =>
+                              setReferenceFile(e.target.files?.[0] || null)
+                            }
+                          />
+                          <small className="muted">
+                            Escolha um WAV autorizado, no mesmo estilo e com a qualidade que você quer alcançar.
+                          </small>
                         </label>
                         <button
                           className="primary"

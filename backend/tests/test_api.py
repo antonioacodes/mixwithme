@@ -55,6 +55,14 @@ def test_version_snapshot_analysis_answers_compare_delete(client,session,wav):
     assert client.delete('/versions/'+a).status_code==200
     assert client.get('/versions/'+a).status_code==404
 
+def test_reference_wav_is_attached_to_version(client,session,wav):
+    tid=client.post('/tracks',json={'title':'Reference','session':session}).json()['id']
+    vid=upload(client,tid,wav).json()['id']
+    r=client.post(f'/versions/{vid}/reference-audio',content=wav,headers={'Content-Type':'audio/wav'})
+    assert r.status_code==200,r.text
+    version=client.get('/versions/'+vid).json()
+    assert version['reference_filename']==vid+'.reference.wav'
+
 
 def test_five_version_limit_including_race(client,session,wav):
     tid=create(client,session)
