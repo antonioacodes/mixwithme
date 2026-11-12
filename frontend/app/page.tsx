@@ -189,6 +189,35 @@ export default function Home() {
           body: flpFile,
         })
       ).json();
+      const importedInserts = result.context.mixer_inserts || [];
+      const kindFor = (name: string): Session["channels"][number]["kind"] => {
+        const n = name.toLowerCase();
+        if (n.includes("master")) return "master";
+        if (n.includes("bus") || n.includes("group")) return "bus";
+        if (n.includes("vocal") || n.includes("vox")) return "vocal";
+        if (n.includes("beat") || n.includes("drum")) return "beat";
+        if (n.includes("return") || n.includes("send")) return "return";
+        return "other";
+      };
+      if (importedInserts.length) {
+        const channels = importedInserts.slice(0, 63).map((insert: any, index: number) => {
+          const name = insert.name || `Mixer ${index + 1}`;
+          const plugins = (insert.slots || [])
+            .map((slot: any) => String(slot.name || "").trim())
+            .filter((name: string, i: number, all: string[]) => name && all.indexOf(name) === i)
+            .slice(0, 30)
+            .map((name: string) => ({ name, kind: "other" as const, bypass: false }));
+          return { id: `flp-${index}`, name, kind: kindFor(name), fader_db: 0, pan: 0, width: 1, plugins };
+        });
+        const master = { id: "flp-master", name: "Master", kind: "master" as const, fader_db: 0, pan: 0, width: 1, plugins: [] };
+        const routes = channels.map((channel: any, index: number) => {
+          const target = importedInserts[index]?.route_to;
+          const targetIndex = Number.isInteger(target) && target < channels.length && target !== 4294967295 ? target : channels.length;
+          return { source: channel.id, target: targetIndex === channels.length ? master.id : channels[targetIndex].id, kind: "output" as const, gain_db: 0 };
+        });
+        setSession((current) => ({ ...current, bpm: result.context.tempo || current.bpm, channels: [...channels, master], routes }));
+        setDirty(true);
+      }
       setFlpFile(null);
       if (flpInputRef.current) flpInputRef.current.value = "";
       setNotice(

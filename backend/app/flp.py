@@ -76,14 +76,21 @@ def parse(path):
             current_channel = {'name': '', 'kind': 'other'}
             channels.append(current_channel)
             current_insert = None
-        elif opcode == 0x62 and current_insert is not None:
-            slots.append({'index': value, 'name': slots[-1].get('name', '') if slots else ''})
+        elif opcode == 0x62:
+            # The first slot boundary also marks the end of channel scope.
+            if current_channel is not None:
+                current_channel = None
+            if current_insert is None:
+                current_insert = {'name': '', 'slots': [], '_pending': ''}
+            slots.append({'index': value, 'name': current_insert.pop('_pending', '')})
         elif opcode == 0xcb and kind == 'blob':
             name = _text(payload)
             if current_insert is None and current_channel is not None:
                 current_channel['name'] = name
-            elif current_insert is not None and name:
+            elif current_channel is None and name:
                 # The name immediately before a slot boundary is its plugin name.
+                if current_insert is None:
+                    current_insert = {'name': '', 'slots': [], '_pending': ''}
                 current_insert['_pending'] = name
         elif opcode == 0xcc and kind == 'blob':
             if current_insert is not None:
@@ -95,9 +102,11 @@ def parse(path):
             current_insert = None; slots = []
         elif opcode == 0x62 and current_insert is None:
             current_insert = {'name': '', 'slots': []}
-        elif opcode == 0xc9 and kind == 'blob' and current_insert is not None:
+        elif opcode == 0xc9 and kind == 'blob' and current_channel is None:
             name = _text(payload)
             if name and name.lower() != 'fruity wrapper':
+                if current_insert is None:
+                    current_insert = {'name': '', 'slots': [], '_pending': ''}
                 current_insert['_pending'] = name
         elif opcode == 0x9c and kind == 'u32':
             tempo = value / 1000
